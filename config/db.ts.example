@@ -1,0 +1,11 @@
+import { Client } from "../deps.ts";
+
+export const db = new Client({
+  user: "postgres",
+  password: "your_password",
+  database: "database_name",
+  hostname: "localhost",
+  port: 5432,
+});
+
+await db.connect();
