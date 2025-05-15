@@ -1,7 +1,6 @@
 import { Application } from "./deps.ts";
 import authRoutes from "./routes/auth.routes.ts";
 import "https://deno.land/std@0.224.0/dotenv/load.ts";
-import "https://deno.land/std@0.224.0/dotenv/load.ts";
 
 const app = new Application();
 
