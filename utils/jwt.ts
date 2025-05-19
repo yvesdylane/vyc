@@ -55,51 +55,6 @@ const getNumericDate = (expiresIn: number): number => {
   return Math.floor(Date.now() / 1000) + expiresIn;
 };
 
-export async function generateToken(userId: string): Promise<string> {
-  try {
-    const header: Header = {
-      alg: "HS256",
-      typ: "JWT"
-    };
-    
-    const payload: Payload = {
-      iss: "vyc_auth",
-      sub: userId,
-      iat: Math.floor(Date.now() / 1000),
-      exp: getNumericDate(60 * 60 * 24), // 24 hours
-    };
-    
-    // Encode header and payload
-    const encoder = new TextEncoder();
-    const headerStr = JSON.stringify(header);
-    const payloadStr = JSON.stringify(payload);
-    const headerBase64 = base64UrlEncode(encoder.encode(headerStr));
-    const payloadBase64 = base64UrlEncode(encoder.encode(payloadStr));
-    
-    // Create signature
-    const data = encoder.encode(`${headerBase64}.${payloadBase64}`);
-    const signatureBuffer = await crypto.subtle.sign(
-      { name: "HMAC", hash: "SHA-256" },
-      await crypto.subtle.importKey(
-        "raw",
-        key,
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"]
-      ),
-      data
-    );
-    
-    const signature = base64UrlEncode(new Uint8Array(signatureBuffer));
-    
-    // Combine to create JWT
-    return `${headerBase64}.${payloadBase64}.${signature}`;
-  } catch (err) {
-    console.error("Error generating JWT:", err);
-    throw new Error(`Failed to generate token: ${err.message}`);
-  }
-}
-
 export async function verifyToken(token: string): Promise<Payload | null> {
   try {
     const [headerBase64, payloadBase64, signature] = token.split(".");
@@ -107,7 +62,7 @@ export async function verifyToken(token: string): Promise<Payload | null> {
     if (!headerBase64 || !payloadBase64 || !signature) {
       throw new Error("Invalid token format");
     }
-    
+    console.log("please verifying token");
     // Verify signature
     const encoder = new TextEncoder();
     const data = encoder.encode(`${headerBase64}.${payloadBase64}`);
