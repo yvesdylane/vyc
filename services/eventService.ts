@@ -106,7 +106,6 @@ export const getAllEvents = async (userId: string) => {
 };
 
 export const getEventInfo = async (event_id: number, user: string) => {
-  // Fetch event
   const eventResult = await client.queryObject<{
     institution_id: string;
     name: string;
@@ -129,83 +128,75 @@ export const getEventInfo = async (event_id: number, user: string) => {
   const event = eventResult.rows[0];
   const scope = event.who_can_participate?.scope || [];
 
-  // Restrict if not global
   if (!scope.includes("global")) {
     const userResult = await client.queryObject(
       `SELECT * FROM users WHERE id = $1`,
       [user],
     );
+    if (userResult.rows.length === 0) throw new Error("User not found");
 
-    if (userResult.rows.length === 0) {
-      throw new Error("User not found");
-    }
-
-    // Check if user is student
     const studentResult = await client.queryObject<{
       institution_id: string;
       department_id: string;
       specialty_id: string;
     }>(
-      `SELECT institution_id, department_id, specialty_id 
-       FROM students 
-       WHERE user_id = $1`,
+      `SELECT institution_id, department_id, specialty_id FROM students WHERE user_id = $1`,
       [user],
     );
 
+    const allowedDepartments: string[] = Array.isArray(event.who_can_participate?.department)
+      ? event.who_can_participate.department
+      : [];
+    const allowedSpecialities: string[] = Array.isArray(event.who_can_participate?.specialities)
+      ? event.who_can_participate.specialities
+      : [];
+
     if (studentResult.rows.length > 0) {
       const { institution_id, department_id, specialty_id } = studentResult.rows[0];
-      const allowedDepartments = event.who_can_participate.department || [];
-      const allowedSpecialities = event.who_can_participate.specialities || [];
 
-      if (institution_id !== event.institution_id) {
+      if (String(institution_id) !== String(event.institution_id)) {
         throw new Error("Access denied: different institution");
       }
-
       if (allowedDepartments.length && !allowedDepartments.includes(department_id)) {
         throw new Error("Access denied: not in allowed department");
       }
-
       if (allowedSpecialities.length && !allowedSpecialities.includes(specialty_id)) {
         throw new Error("Access denied: not in allowed specialty");
       }
+
     } else {
-      // Check if user is institution staff
       const staffResult = await client.queryObject<{
         institution_id: string;
         department_id: string;
       }>(
-        `SELECT institution_id, department_id 
-         FROM institution_users 
-         WHERE user_id = $1`,
+        `SELECT institution_id, department_id FROM institution_users WHERE user_id = $1`,
         [user],
       );
 
-      if (staffResult.rows.length === 0) {
-        throw new Error("Access denied");
-      }
+      if (staffResult.rows.length === 0) throw new Error("Access denied");
 
       const { institution_id, department_id } = staffResult.rows[0];
-      const allowedDepartments = event.who_can_participate.department || [];
 
-      if (institution_id !== event.institution_id) {
+      if (String(institution_id) !== String(event.institution_id)) {
         throw new Error("Access denied: different institution");
       }
-
       if (allowedDepartments.length && !allowedDepartments.includes(department_id)) {
         throw new Error("Access denied: not in allowed department");
       }
     }
   }
 
-  // Get institution name
   const institutionResult = await client.queryObject<{ name: string }>(
     `SELECT name FROM institutions WHERE id = $1`,
     [event.institution_id],
   );
 
+  if (institutionResult.rows.length === 0) {
+    throw new Error("Institution not found");
+  }
+
   const institution = institutionResult.rows[0];
 
-  // Get event participants
   const eventParticipants = await client.queryObject(
     `SELECT * FROM event_participants WHERE event_id = $1`,
     [event_id],
@@ -217,4 +208,100 @@ export const getEventInfo = async (event_id: number, user: string) => {
     event_participants_count: eventParticipants.rows.length,
     event_participants: eventParticipants.rows,
   };
+};
+
+export const getEventParticipant = async (eventId: number, user: string, participantId: number) => {
+  const eventResult = await client.queryObject<{
+    institution_id: string;
+    name: string;
+    status: string;
+    start_on: string;
+    end_on: string;
+    who_can_participate: any;
+    bio: string;
+  }>(
+    `SELECT institution_id, name, status, start_on, end_on, who_can_participate, bio 
+     FROM events 
+     WHERE id = $1 AND status = 'ongoing'`,
+    [eventId],
+  );
+
+  if (eventResult.rows.length === 0) {
+    throw new Error("Event not found or not ongoing");
+  }
+
+  const event = eventResult.rows[0];
+  const scope = event.who_can_participate?.scope || [];
+
+  if (!scope.includes("global")) {
+    const userResult = await client.queryObject(
+      `SELECT * FROM users WHERE id = $1`,
+      [user],
+    );
+    if (userResult.rows.length === 0) throw new Error("User not found");
+
+    // Check if user is student
+    const studentResult = await client.queryObject<{
+      institution_id: string;
+      department_id: string;
+      specialty_id: string;
+    }>(
+      `SELECT institution_id, department_id, specialty_id FROM students WHERE user_id = $1`,
+      [user],
+    );
+
+    const allowedDepartments: string[] = Array.isArray(event.who_can_participate?.department)
+      ? event.who_can_participate.department
+      : [];
+    const allowedSpecialities: string[] = Array.isArray(event.who_can_participate?.specialities)
+      ? event.who_can_participate.specialities
+      : [];
+
+    if (studentResult.rows.length > 0) {
+      const { institution_id, department_id, specialty_id } = studentResult.rows[0];
+
+      if (String(institution_id) !== String(event.institution_id)) {
+        throw new Error("Access denied: different institution");
+      }
+      if (allowedDepartments.length && !allowedDepartments.includes(department_id)) {
+        throw new Error("Access denied: not in allowed department");
+      }
+      if (allowedSpecialities.length && !allowedSpecialities.includes(specialty_id)) {
+        throw new Error("Access denied: not in allowed specialty");
+      }
+
+    } else {
+      // Check if user is staff
+      const staffResult = await client.queryObject<{
+        institution_id: string;
+        department_id: string;
+      }>(
+        `SELECT institution_id, department_id FROM institution_users WHERE user_id = $1`,
+        [user],
+      );
+
+      if (staffResult.rows.length === 0) throw new Error("Access denied");
+
+      const { institution_id, department_id } = staffResult.rows[0];
+
+      if (String(institution_id) !== String(event.institution_id)) {
+        throw new Error("Access denied: different institution");
+      }
+      if (allowedDepartments.length && !allowedDepartments.includes(department_id)) {
+        throw new Error("Access denied: not in allowed department");
+      }
+    }
+  }
+
+  // Fetch participant info
+  const participantResult = await client.queryObject(
+    `SELECT * FROM event_participants WHERE event_id = $1 AND id = $2`,
+    [eventId, participantId],
+  );
+
+  if (participantResult.rows.length === 0) {
+    throw new Error("Participant not found");
+  }
+
+  return participantResult.rows[0];
 };
