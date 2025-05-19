@@ -1,11 +1,14 @@
-import { Application } from "./deps.ts";
-import apiRoutes from "./routes/api.routes.ts";
-import "https://deno.land/std@0.224.0/dotenv/load.ts";
+import { Application } from "https://deno.land/x/oak/mod.ts";
+import eventRoutes from "./routes/eventRoutes.ts";
+import { authMiddleware } from "./middlewares/authMiddleware.ts";
 
 const app = new Application();
 
-app.use(apiRoutes.routes());
-app.use(apiRoutes.allowedMethods());
+// Global auth protection
+app.use(authMiddleware);
 
-console.log("Server running on http://localhost:8081");
-await app.listen({ port: 8081 });
+app.use(eventRoutes.routes());
+app.use(eventRoutes.allowedMethods());
+
+console.log("Server running on http://localhost:8080");
+await app.listen({ port: 8000 });
