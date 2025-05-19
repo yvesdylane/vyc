@@ -13,7 +13,7 @@ export const fetchEvents = async (ctx: any) => {
 
 export const fetchEventInfo = async (ctx: any) => {
   try {
-    const eventId = ctx.params.id;
+    const eventId:number = ctx.params.id;
     const user = ctx.state.user.sub;
     const eventInfo = await getEventInfo(eventId, user);
     ctx.response.body = { eventInfo };
