@@ -124,6 +124,12 @@ export async function verifyEmail(token: string) {
                 text: query,
                 args: [true, null, verified_at, token]
             });
+            console.log("Email verified successfully.");
+            const query2 = `INSERT INTO user_roles ("user_id","role_id") VALUES ($1, $2)`;
+            await db.queryObject({
+                text: query2,
+                args: [existingToken.rows[0].id, 1] // Assigning role_id 1 is for regular users
+            });
             return true;
         }
         return false; 
