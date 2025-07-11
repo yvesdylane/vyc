@@ -1,4 +1,4 @@
-import { getAllEvents, getEventInfo, getEventParticipant } from "../services/eventService.ts";
+import { getAllEvents, getEventInfo, getEventParticipant, getInstitutionEvents } from "../services/eventService.ts";
 
 export const fetchEvents = async (ctx: any) => {
   try {
@@ -35,3 +35,15 @@ export const fectchEventParticipant = async (ctx: any) => {
     ctx.response.body = { message: "Failed to fetch event info", error: err.message };
   }
 }
+
+export const fetchInstitutionEvents = async (ctx: any) => {
+  try {
+    const institutionId: string = ctx.params.institutionId;
+    const user = ctx.state.user.sub;
+    const events = await getInstitutionEvents(institutionId, user);
+    ctx.response.body = { events };
+  } catch (err) {
+    ctx.response.status = 500;
+    ctx.response.body = { message: "Failed to fetch institution events", error: err.message };
+  }
+};

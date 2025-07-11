@@ -36,17 +36,19 @@ export const getAllEvents = async (userId: string) => {
         `SELECT * FROM events 
          WHERE status = 'ongoing'
          AND (
-           who_can_participate->'scope' @> '["global"]'
+           who_can_participate->>'scope' = 'global'
            OR (
-             who_can_participate->'scope' @> '["institution_students"]'
+             who_can_participate->>'scope' = 'institution_students'
              AND institution_id = $1
              AND (
                who_can_participate->'department' IS NULL
+               OR jsonb_array_length(who_can_participate->'department') = 0
                OR who_can_participate->'department' @> to_jsonb(ARRAY[$2])
              )
              AND (
-               who_can_participate->'specialities' IS NULL
-               OR who_can_participate->'specialities' @> to_jsonb(ARRAY[$3])
+               who_can_participate->'specialties' IS NULL
+               OR jsonb_array_length(who_can_participate->'specialties') = 0
+               OR who_can_participate->'specialties' @> to_jsonb(ARRAY[$3])
              )
            )
          )`,
@@ -73,12 +75,13 @@ export const getAllEvents = async (userId: string) => {
         `SELECT * FROM events 
          WHERE status = 'ongoing'
          AND (
-           who_can_participate->'scope' @> '["global"]'
+           who_can_participate->>'scope' = 'global'
            OR (
-             who_can_participate->'scope' @> '["institution_students"]'
+             who_can_participate->>'scope' = 'institution_students'
              AND institution_id = $1
              AND (
                who_can_participate->'department' IS NULL
+               OR jsonb_array_length(who_can_participate->'department') = 0
                OR who_can_participate->'department' @> to_jsonb(ARRAY[$2])
              )
            )
@@ -89,10 +92,11 @@ export const getAllEvents = async (userId: string) => {
       console.log("Fetched events for staff:", result.rows.length);
       return result.rows;
     }
+    
     // Fallback: only global events
     const result = await client.queryObject(
       `SELECT * FROM events 
-       WHERE who_can_participate->'scope' @> '["global"]' 
+       WHERE who_can_participate->>'scope' = 'global'
        AND status = 'ongoing'`
     );
 
@@ -126,9 +130,9 @@ export const getEventInfo = async (event_id: number, user: string) => {
   }
 
   const event = eventResult.rows[0];
-  const scope = event.who_can_participate?.scope || [];
+  const scope = event.who_can_participate?.scope || "";
 
-  if (!scope.includes("global")) {
+  if (scope !== "global") {
     const userResult = await client.queryObject(
       `SELECT * FROM users WHERE id = $1`,
       [user],
@@ -147,8 +151,8 @@ export const getEventInfo = async (event_id: number, user: string) => {
     const allowedDepartments: string[] = Array.isArray(event.who_can_participate?.department)
       ? event.who_can_participate.department
       : [];
-    const allowedSpecialities: string[] = Array.isArray(event.who_can_participate?.specialities)
-      ? event.who_can_participate.specialities
+    const allowedSpecialties: string[] = Array.isArray(event.who_can_participate?.specialties)
+      ? event.who_can_participate.specialties
       : [];
 
     if (studentResult.rows.length > 0) {
@@ -160,7 +164,7 @@ export const getEventInfo = async (event_id: number, user: string) => {
       if (allowedDepartments.length && !allowedDepartments.includes(department_id)) {
         throw new Error("Access denied: not in allowed department");
       }
-      if (allowedSpecialities.length && !allowedSpecialities.includes(specialty_id)) {
+      if (allowedSpecialties.length && !allowedSpecialties.includes(specialty_id)) {
         throw new Error("Access denied: not in allowed specialty");
       }
 
@@ -198,7 +202,7 @@ export const getEventInfo = async (event_id: number, user: string) => {
   const institution = institutionResult.rows[0];
 
   const eventParticipants = await client.queryObject(
-    `SELECT * FROM event_participants WHERE event_id = $1`,
+    `SELECT event_participants.*, users.name  FROM event_participants JOIN users ON event_participants.user_id = users.id WHERE event_participants.event_id = $1`,
     [event_id],
   );
 
@@ -231,9 +235,9 @@ export const getEventParticipant = async (eventId: number, user: string, partici
   }
 
   const event = eventResult.rows[0];
-  const scope = event.who_can_participate?.scope || [];
+  const scope = event.who_can_participate?.scope || "";
 
-  if (!scope.includes("global")) {
+  if (scope !== "global") {
     const userResult = await client.queryObject(
       `SELECT * FROM users WHERE id = $1`,
       [user],
@@ -253,8 +257,8 @@ export const getEventParticipant = async (eventId: number, user: string, partici
     const allowedDepartments: string[] = Array.isArray(event.who_can_participate?.department)
       ? event.who_can_participate.department
       : [];
-    const allowedSpecialities: string[] = Array.isArray(event.who_can_participate?.specialities)
-      ? event.who_can_participate.specialities
+    const allowedSpecialties: string[] = Array.isArray(event.who_can_participate?.specialties)
+      ? event.who_can_participate.specialties
       : [];
 
     if (studentResult.rows.length > 0) {
@@ -266,7 +270,7 @@ export const getEventParticipant = async (eventId: number, user: string, partici
       if (allowedDepartments.length && !allowedDepartments.includes(department_id)) {
         throw new Error("Access denied: not in allowed department");
       }
-      if (allowedSpecialities.length && !allowedSpecialities.includes(specialty_id)) {
+      if (allowedSpecialties.length && !allowedSpecialties.includes(specialty_id)) {
         throw new Error("Access denied: not in allowed specialty");
       }
 
@@ -295,7 +299,10 @@ export const getEventParticipant = async (eventId: number, user: string, partici
 
   // Fetch participant info
   const participantResult = await client.queryObject(
-    `SELECT * FROM event_participants WHERE event_id = $1 AND id = $2`,
+    `SELECT event_participants.*, users.name 
+    FROM event_participants 
+    JOIN users ON event_participants.user_id = users.id 
+    WHERE event_participants.event_id = $1 AND event_participants.id = $2`,
     [eventId, participantId],
   );
 
@@ -304,4 +311,63 @@ export const getEventParticipant = async (eventId: number, user: string, partici
   }
 
   return participantResult.rows[0];
+};
+
+export const getInstitutionEvents = async (userId: string, institutionId: string) => {
+  try {
+    console.log("Fetching institution events for user:", userId, "institution:", institutionId);
+    
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId) || !uuidRegex.test(institutionId)) {
+      throw new Error("Invalid user ID or institution ID format");
+    }
+
+    // Check if user exists
+    const userResult = await client.queryObject<{ id: string }>(
+      `SELECT id FROM users WHERE id = $1`,
+      [userId],
+    );
+
+    if (userResult.rows.length === 0) {
+      throw new Error(`User not found with ID: ${userId}`);
+    }
+
+    // Check if user belongs to the institution (either as student or staff)
+    const studentResult = await client.queryObject<{
+      institution_id: string;
+      department_id: string;
+      specialty_id: string;
+    }>(
+      `SELECT institution_id, department_id, specialty_id FROM students WHERE user_id = $1 AND institution_id = $2`,
+      [userId, institutionId],
+    );
+
+    const staffResult = await client.queryObject<{
+      institution_id: string;
+      department_id: string;
+    }>(
+      `SELECT institution_id, department_id FROM institution_users WHERE user_id = $1 AND institution_id = $2`,
+      [userId, institutionId],
+    );
+
+    if (studentResult.rows.length === 0 && staffResult.rows.length === 0) {
+      throw new Error("Access denied: User does not belong to this institution");
+    }
+
+    // Fetch all ongoing events for this institution
+    const result = await client.queryObject(
+      `SELECT * FROM events 
+       WHERE institution_id = $1 
+       AND status = 'ongoing'
+       ORDER BY created_at DESC`,
+      [institutionId],
+    );
+
+    console.log("Fetched institution events:", result.rows.length);
+    return result.rows;
+
+  } catch (error) {
+    console.error(`Error fetching institution events:`, error);
+    throw new Error(`Failed to fetch institution events: ${error.message}`);
+  }
 };
